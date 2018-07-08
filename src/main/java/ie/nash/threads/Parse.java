@@ -87,6 +87,7 @@ public class Parse implements CommandLineRunner {
         Path  path = Paths.get(threadDumpFile+".stats");
 
         Files.write(path,  () -> threadStatusCount.entrySet().stream()
+                .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
                 .<CharSequence>map(e -> e.getValue() + ":" + e.getKey())
                 .iterator(),StandardOpenOption.CREATE);
 
