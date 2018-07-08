@@ -7,12 +7,12 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.nio.file.StandardOpenOption;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -36,7 +36,7 @@ public class Parse implements CommandLineRunner {
     public void run(String... args) throws Exception {
         LOGGER.info("");
 
-        List<String> threads = new ArrayList<>();
+
 
         URI uri = ClassLoader.getSystemResource(threadDumpFile)
                 .toURI();
@@ -46,13 +46,28 @@ public class Parse implements CommandLineRunner {
                 .map(s -> s.replaceAll("<0x.*>", "<0xObjectID>"))
                 .collect(Collectors.toList());
 
-        List<Integer> threadIndexes = IntStream.range(0, fileLines.size())
+        List<Integer> threadStartIndex = IntStream.range(0, fileLines.size())
                 .filter(i -> fileLines.get(i).contains("Thread.State") && !fileLines.get(i + 1).isEmpty())
                 .boxed()
                 .collect(Collectors.toList());
 
 
-        for (Integer threadIndex : threadIndexes) {
+        Map<String, Integer> threadStatusCount = new HashMap<>();
+
+        List<String> threads = new ArrayList<>();
+
+        for (Integer threadIndex : threadStartIndex) {
+
+            String threadStatus =fileLines.get(threadIndex);
+
+            if(threadStatusCount.containsKey(threadStatus)) {
+                Integer count =  threadStatusCount.get(threadStatus);
+                threadStatusCount.put(threadStatus, ++count);
+            } else {
+                threadStatusCount.put(threadStatus, 1);
+            }
+
+
             StringBuilder thread = new StringBuilder();
             for (int i = 0; i < THREAD_DEPTH; i++) {
                 String line = fileLines.get(threadIndex + i);
@@ -65,14 +80,21 @@ public class Parse implements CommandLineRunner {
             threads.add(thread.toString());
         }
 
-        Map<String, Long> counted = threads.stream()
-                .filter(s-> !s.contains(PACKAGE))
+        Map<String, Long> groupByThread = threads.stream()
+                //.filter(s-> (!(PACKAGE.trim().isEmpty())) && !(s.contains(PACKAGE)))
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
 
         Path  path = Paths.get(threadDumpFile+".stats");
 
-        Files.write(path, () -> counted.entrySet().stream()
+        Files.write(path,  () -> threadStatusCount.entrySet().stream()
+                .<CharSequence>map(e -> e.getValue() + ":" + e.getKey())
+                .iterator(),StandardOpenOption.CREATE);
+
+        Files.write(path, "------------------------------------------------\n".getBytes(), StandardOpenOption.APPEND);
+
+        Files.write(path, () -> groupByThread.entrySet().stream()
+                .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
                 .<CharSequence>map(e -> "Count " + e.getValue() + ":\n" + e.getKey())
-                .iterator());
+                .iterator(),StandardOpenOption.APPEND);
     }
 }
